@@ -7,10 +7,16 @@
 在软路由 SSH 里执行:
 
 ```sh
+# 公开仓库
 wget -qO- https://raw.githubusercontent.com/YOUR_GITHUB_USERNAME/tg-checkin/main/install.sh | sh
+
+# 私有仓库 (token 只在下载时用, 不保存)
+curl -sfL -H "Authorization: Bearer 你的TOKEN" \
+  -o /tmp/install.sh https://raw.githubusercontent.com/YOUR_GITHUB_USERNAME/tg-checkin/main/install.sh \
+  && sh /tmp/install.sh
 ```
 
-安装脚本会: 装 python3/pip/telethon → 下载脚本到 `/root/tg-checkin/` → 写入每天 10:00 的定时任务。
+安装脚本会: 装 python3/pip/telethon → 下载脚本到 `/root/tg-checkin/` → 写入每天 10:00 的定时任务。私有仓库下载时按提示输入 GitHub token (repo 权限) 即可, 也可以提前 `export GITHUB_TOKEN=xxx` 跳过输入。
 
 ## 配置 (一个命令全搞定)
 
