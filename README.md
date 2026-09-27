@@ -40,7 +40,7 @@ python3 /root/tg-checkin/setup.py
 4. **设置推送机器人** — 打卡结束后把成功/失败清单推送到你指定的机器人 (需要 bot token + chat ID)。
 5. **设置代理** — 默认 `socks5://127.0.0.1:7891` (OpenClash)。
 6. **立即测试打卡一次**。
-7. **查看近7天打卡情况** (也可直接运行 `python3 checkin.py status`)。
+7. **查看近7天打卡情况** (也可直接运行 `python3 checkin.py status`)，看完可选择立即手动打卡一次。
 
 ## 申请 Telegram API ID / Hash
 

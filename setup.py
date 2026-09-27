@@ -125,6 +125,16 @@ async def add_account_flow():
     await add_account.main()
 
 
+def manual_checkin(vals):
+    print("开始手动打卡...")
+    env = dict(os.environ)
+    for k, v in vals.items():
+        env[k] = v
+    r = subprocess.run([sys.executable, os.path.join(BASE_DIR, "checkin.py"),
+                        "checkin"], env=env)
+    print("打卡结束" if r.returncode == 0 else "打卡异常, 看上方日志")
+
+
 def main():
     vals = read_env()
     while True:
@@ -180,15 +190,12 @@ def main():
                 write_env(vals)
                 print("代理已更新")
         elif choice == "6":
-            print("开始测试打卡...")
-            env = dict(os.environ)
-            for k, v in vals.items():
-                env[k] = v
-            r = subprocess.run([sys.executable, os.path.join(BASE_DIR, "checkin.py"),
-                                "checkin"], env=env)
-            print("测试结束" if r.returncode == 0 else "测试异常, 看上方日志")
+            manual_checkin(vals)
         elif choice == "7":
             subprocess.run([sys.executable, os.path.join(BASE_DIR, "checkin.py"), "status"])
+            ans = input("是否立即手动打卡一次? (y/N): ").strip().lower()
+            if ans in ("y", "yes"):
+                manual_checkin(vals)
         elif choice == "0":
             print("退出")
             break
