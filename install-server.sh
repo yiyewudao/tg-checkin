@@ -49,8 +49,11 @@ if [ -z "$CHECKIN_TIME" ]; then
   read CHECKIN_TIME < /dev/tty 2>/dev/null || CHECKIN_TIME=""
 fi
 CHECKIN_TIME="${CHECKIN_TIME:-10:00}"
-CRON_H=$(echo "$CHECKIN_TIME" | cut -d: -f1 | tr -cd '0-9')
-CRON_M=$(echo "$CHECKIN_TIME" | cut -d: -f2 | tr -cd '0-9')
+CRON_H="${CHECKIN_TIME%%:*}"
+CRON_M="${CHECKIN_TIME##*:}"
+[ "$CRON_H" = "$CRON_M" ] && CRON_M=0
+CRON_H=$(echo "$CRON_H" | tr -cd '0-9')
+CRON_M=$(echo "$CRON_M" | tr -cd '0-9')
 [ -z "$CRON_H" ] && CRON_H=10
 [ -z "$CRON_M" ] && CRON_M=0
 if [ "$CRON_H" -gt 23 ] || [ "$CRON_M" -gt 59 ]; then CRON_H=10; CRON_M=0; fi
