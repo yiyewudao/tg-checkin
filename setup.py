@@ -57,37 +57,65 @@ def show_current(vals):
     print("=" * 46)
 
 
+def is_openwrt():
+    return os.path.exists("/etc/crontabs/root")
+
+
+def parse_cron_line(line):
+    parts = line.split()
+    return f"每天 {parts[1]}:{parts[0].zfill(2)}"
+
+
 def current_cron():
-    try:
-        with open(CRON_FILE) as f:
-            for line in f:
+    if is_openwrt():
+        try:
+            with open(CRON_FILE) as f:
+                for line in f:
+                    if RUN_LINE in line:
+                        return parse_cron_line(line)
+        except FileNotFoundError:
+            pass
+    else:
+        try:
+            out = subprocess.run(["crontab", "-l"], capture_output=True, text=True).stdout
+            for line in out.splitlines():
                 if RUN_LINE in line:
-                    parts = line.split()
-                    return f"每天 {parts[1]}:{parts[0].zfill(2)}"
-    except FileNotFoundError:
-        pass
+                    return parse_cron_line(line)
+        except FileNotFoundError:
+            pass
     return "未设置"
 
 
 def set_cron(hour, minute):
-    lines, found = [], False
-    try:
-        with open(CRON_FILE) as f:
-            lines = f.readlines()
-    except FileNotFoundError:
-        pass
-    out = []
-    for line in lines:
-        if RUN_LINE in line:
-            out.append(f"{minute} {hour} * * * {RUN_LINE}\n")
-            found = True
-        else:
-            out.append(line)
-    if not found:
-        out.append(f"{minute} {hour} * * * {RUN_LINE}\n")
-    with open(CRON_FILE, "w") as f:
-        f.writelines(out)
-    subprocess.run(["/etc/init.d/cron", "restart"], capture_output=True)
+    new_line = f"{minute} {hour} * * * {RUN_LINE}"
+    if is_openwrt():
+        lines, found = [], False
+        try:
+            with open(CRON_FILE) as f:
+                lines = f.readlines()
+        except FileNotFoundError:
+            pass
+        out = []
+        for line in lines:
+            if RUN_LINE in line:
+                out.append(new_line + "\n")
+                found = True
+            else:
+                out.append(line)
+        if not found:
+            out.append(new_line + "\n")
+        with open(CRON_FILE, "w") as f:
+            f.writelines(out)
+        subprocess.run(["/etc/init.d/cron", "restart"], capture_output=True)
+    else:
+        cur = subprocess.run(["crontab", "-l"], capture_output=True, text=True).stdout
+        lines = [l for l in cur.splitlines() if RUN_LINE not in l]
+        lines.append(new_line)
+        p = subprocess.run(["crontab", "-"], input="\n".join(lines) + "\n",
+                           text=True, capture_output=True)
+        if p.returncode != 0:
+            print("写入 crontab 失败:", p.stderr.strip()[:200])
+            return
     print(f"已设置为每天 {hour}:{str(minute).zfill(2)} 打卡")
 
 

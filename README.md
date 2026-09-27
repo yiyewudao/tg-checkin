@@ -18,6 +18,14 @@ curl -sfL -H "Authorization: Bearer 你的TOKEN" \
 
 安装脚本会: 装 python3/pip/telethon → 下载脚本到 `/root/tg-checkin/` → 写入每天 10:00 的定时任务。私有仓库下载时按提示输入 GitHub token (repo 权限) 即可, 也可以提前 `export GITHUB_TOKEN=xxx` 跳过输入。
 
+## 服务器版 (Debian / Ubuntu)
+
+```sh
+wget -qO- https://raw.githubusercontent.com/yiyewudao/tg-checkin/main/install-server.sh | sh
+```
+
+`setup.py` 会自动识别软路由和服务器, 定时任务分别写入对应的 cron。
+
 ## 配置 (一个命令全搞定)
 
 ```sh
@@ -43,7 +51,8 @@ python3 /root/tg-checkin/setup.py
 
 | 文件 | 说明 |
 |---|---|
-| `install.sh` | 一键安装 |
+| `install.sh` | 一键安装 (OpenWrt/软路由) |
+| `install-server.sh` | 一键安装 (Debian/Ubuntu 服务器) |
 | `setup.py` | 交互式配置向导 |
 | `checkin.py` | 打卡主脚本 (定时任务调用) |
 | `add_account.py` | 单独加号脚本 (setup.py 也会调用它) |
