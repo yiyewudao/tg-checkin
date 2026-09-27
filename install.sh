@@ -9,6 +9,11 @@
 #   (想跳过手动输入可先执行: export GITHUB_TOKEN=你的TOKEN)
 set -e
 
+if [ "$(id -u)" -ne 0 ]; then
+  echo "请用 root 用户运行此脚本"
+  exit 1
+fi
+
 REPO="GITHUB_USER/tg-checkin"
 BRANCH="main"
 DIR=/root/tg-checkin
@@ -32,8 +37,8 @@ apk update
 apk add python3 py3-pip curl ca-certificates wget
 
 echo "== 2/4 安装 Python 依赖 =="
-pip3 install --quiet telethon pysocks python-socks 2>/dev/null \
-  || pip3 install --quiet --break-system-packages telethon pysocks python-socks
+PIP_ROOT_USER_ACTION=ignore pip3 install --quiet telethon pysocks python-socks 2>/dev/null \
+  || PIP_ROOT_USER_ACTION=ignore pip3 install --quiet --break-system-packages telethon pysocks python-socks
 
 echo "== 3/4 下载脚本到 $DIR =="
 mkdir -p "$DIR"

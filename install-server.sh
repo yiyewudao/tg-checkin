@@ -4,6 +4,11 @@
 #   wget -qO- https://raw.githubusercontent.com/yiyewudao/tg-checkin/main/install-server.sh | sh
 set -e
 
+if [ "$(id -u)" -ne 0 ]; then
+  echo "请用 root 用户运行此脚本 (如: sudo sh)"
+  exit 1
+fi
+
 REPO="yiyewudao/tg-checkin"
 BRANCH="main"
 DIR=/root/tg-checkin
@@ -27,8 +32,8 @@ apt-get update -qq
 apt-get install -y -qq python3 python3-pip curl ca-certificates cron
 
 echo "== 2/4 安装 Python 依赖 =="
-pip3 install --quiet telethon pysocks python-socks 2>/dev/null \
-  || pip3 install --quiet --break-system-packages telethon pysocks python-socks
+PIP_ROOT_USER_ACTION=ignore pip3 install --quiet telethon pysocks python-socks 2>/dev/null \
+  || PIP_ROOT_USER_ACTION=ignore pip3 install --quiet --break-system-packages telethon pysocks python-socks
 
 echo "== 3/4 下载脚本到 $DIR =="
 mkdir -p "$DIR"
