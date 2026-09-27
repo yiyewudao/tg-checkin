@@ -8,11 +8,11 @@
 
 ```sh
 # 公开仓库
-wget -qO- https://raw.githubusercontent.com/YOUR_GITHUB_USERNAME/tg-checkin/main/install.sh | sh
+wget -qO- https://raw.githubusercontent.com/yiyewudao/tg-checkin/main/install.sh | sh
 
 # 私有仓库 (token 只在下载时用, 不保存)
 curl -sfL -H "Authorization: Bearer 你的TOKEN" \
-  -o /tmp/install.sh https://raw.githubusercontent.com/YOUR_GITHUB_USERNAME/tg-checkin/main/install.sh \
+  -o /tmp/install.sh https://raw.githubusercontent.com/yiyewudao/tg-checkin/main/install.sh \
   && sh /tmp/install.sh
 ```
 
