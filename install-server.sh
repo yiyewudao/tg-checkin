@@ -12,7 +12,9 @@ fi
 REPO="yiyewudao/tg-checkin"
 BRANCH="main"
 DIR=/root/tg-checkin
-RAW="https://raw.githubusercontent.com/$REPO/$BRANCH"
+# GitHub 被墙时, 可用自己的服务器做中转 (见 README):
+#   export TG_RAW_BASE="http://你的服务器IP:8000"
+RAW="${TG_RAW_BASE:-https://raw.githubusercontent.com/$REPO/$BRANCH}"
 
 dl() {
   # $1=url $2=dest : 先尝试免认证下载, 失败(私有仓库)再要 token
