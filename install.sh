@@ -47,10 +47,22 @@ chmod 700 run.sh
 [ -f env.sh ] || cp env.sh.example env.sh
 chmod 600 env.sh
 
-echo "== 4/4 设置定时任务 (默认每天 10:00, 可用 setup.py 修改) =="
+echo "== 4/4 设置定时任务 =="
+# 打卡时间: 可用环境变量 CHECKIN_TIME 预设 (如 9:30), 否则交互询问, 默认 10:00
+if [ -z "$CHECKIN_TIME" ]; then
+  printf "每天几点打卡? (默认 10:00, 格式如 9:30, 直接回车用默认): "
+  read CHECKIN_TIME < /dev/tty 2>/dev/null || CHECKIN_TIME=""
+fi
+CHECKIN_TIME="${CHECKIN_TIME:-10:00}"
+CRON_H=$(echo "$CHECKIN_TIME" | cut -d: -f1 | tr -cd '0-9')
+CRON_M=$(echo "$CHECKIN_TIME" | cut -d: -f2 | tr -cd '0-9')
+[ -z "$CRON_H" ] && CRON_H=10
+[ -z "$CRON_M" ] && CRON_M=0
+if [ "$CRON_H" -gt 23 ] || [ "$CRON_M" -gt 59 ]; then CRON_H=10; CRON_M=0; fi
 grep -q "tg-checkin/run.sh" /etc/crontabs/root 2>/dev/null \
-  || echo "0 10 * * * /root/tg-checkin/run.sh" >> /etc/crontabs/root
+  || echo "$CRON_M $CRON_H * * * /root/tg-checkin/run.sh" >> /etc/crontabs/root
 /etc/init.d/cron restart
+echo "已设置为每天 $CRON_H:$(printf %02d $CRON_M) 打卡 (以后可用 setup.py 修改)"
 
 echo ""
 echo "== 安装完成 =="
