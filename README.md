@@ -37,28 +37,6 @@ export TG_RAW_BASE="http://free.xlulu.eu.org:8000" && wget -qO- $TG_RAW_BASE/ins
 
 `setup.py` 会自动识别软路由和服务器, 定时任务分别写入对应的 cron。
 
-## GitHub 被墙时: 用自己的服务器中转
-
-如果你有能直连 GitHub 的空服务器, 让它做下载中转:
-
-**在中转服务器上** (能直连 GitHub 的那台):
-```sh
-mkdir -p /tmp/tgraw && cd /tmp/tgraw
-for f in install.sh install-server.sh checkin.py add_account.py setup.py run.sh env.sh.example; do
-  curl -sLO https://raw.githubusercontent.com/yiyewudao/tg-checkin/main/$f
-done
-nohup python3 -m http.server 8000 >/tmp/tgraw.log 2>&1 &
-```
-
-**在要安装的目标机器上** (能访问上面那台服务器即可):
-```sh
-export TG_RAW_BASE="http://服务器IP:8000"
-wget -qO- $TG_RAW_BASE/install.sh | sh          # 软路由
-# 或 wget -qO- $TG_RAW_BASE/install-server.sh | sh  # Debian/Ubuntu
-```
-
-装完后中转服务器上跑 `pkill -f "http.server 8000"` 关掉服务即可。
-
 ## 配置 (一个命令全搞定)
 
 ```sh
