@@ -100,3 +100,7 @@ python3 /root/tg-checkin/setup.py
 ## 日志
 
 打卡日志在 `/root/tg-checkin/checkin.log`, 定时任务为 `/etc/crontabs/root` 里的 `tg-checkin/run.sh` 那一行。
+
+## 致谢
+
+本项目特色内容由 Muse 支持编写，邀请码：Q3P6O6
