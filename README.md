@@ -83,14 +83,22 @@ python3 /root/tg-checkin/setup.py
 
 `/root/tg-checkin/` 里有账号凭证 (`env.sh`) 和登录态 (`.session` 文件)，建议定期备份。**备份包等同于账号本身，别乱传、别放网盘。**
 
-**备份**（软路由上打包 → 下载到电脑）：
+**备份**（二选一）：
+
+方法一：打包下载（推荐，文件权限保持）：
 ```sh
 # 在软路由上：
 tar -czf /tmp/tg-checkin-backup.tar.gz -C /root tg-checkin
 # 在电脑上下载：
 scp root@路由器IP:/tmp/tg-checkin-backup.tar.gz .
 ```
-也可以用 WinSCP 连上路由器，直接把 `/root/tg-checkin` 整个文件夹拖到电脑（拖回去恢复时记得把 `env.sh` 权限改回 600）。
+
+方法二：直接复制文件夹：
+```sh
+# 在电脑上一条命令拷回整个文件夹：
+scp -r root@路由器IP:/root/tg-checkin .
+```
+或用 WinSCP 连上路由器，直接把 `/root/tg-checkin` 拖到电脑。恢复时拖回去，记得把 `env.sh` 权限改回 600（WinSCP 右键 → 属性）。
 
 **恢复**（换机器 / 重刷固件后）：
 ```sh
