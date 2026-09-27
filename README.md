@@ -79,6 +79,34 @@ python3 /root/tg-checkin/setup.py
 
 打卡日志在 `/root/tg-checkin/checkin.log`, 定时任务为 `/etc/crontabs/root` 里的 `tg-checkin/run.sh` 那一行。
 
+## 备份与恢复
+
+`/root/tg-checkin/` 里有账号凭证 (`env.sh`) 和登录态 (`.session` 文件)，建议定期备份。**备份包等同于账号本身，别乱传、别放网盘。**
+
+**备份**（软路由上打包 → 下载到电脑）：
+```sh
+# 在软路由上：
+tar -czf /tmp/tg-checkin-backup.tar.gz -C /root tg-checkin
+# 在电脑上下载：
+scp root@路由器IP:/tmp/tg-checkin-backup.tar.gz .
+```
+也可以用 WinSCP 连上路由器，直接把 `/root/tg-checkin` 整个文件夹拖到电脑（拖回去恢复时记得把 `env.sh` 权限改回 600）。
+
+**恢复**（换机器 / 重刷固件后）：
+```sh
+# 1. 把备份的 tg-checkin 文件夹放回 /root/（WinSCP 拖回去，或 scp 传回后 tar -xzf 解压）
+# 2. 一键恢复：
+curl -s -o /root/tg-checkin/restore.sh https://raw.githubusercontent.com/yiyewudao/tg-checkin/main/restore.sh && sh /root/tg-checkin/restore.sh
+# GitHub 被墙时把上面地址换成中转：http://free.xlulu.eu.org:8000/restore.sh
+```
+
+`restore.sh` 自动：装 python3/pip（缺才装）→ 装 telethon（缺才装）→ 补每天 10:00 的定时任务 → 列出账号验证。账号列表出来 = 恢复成功，不用重新登录。
+
+**固件升级不断打卡**：升级前把打卡目录加进备份列表，选"保留配置"升级后自动恢复：
+```sh
+grep -q "/root/tg-checkin/" /etc/sysupgrade.conf 2>/dev/null || echo "/root/tg-checkin/" >> /etc/sysupgrade.conf
+```
+
 ## 致谢
 
 本项目特色内容由 Muse 支持编写，邀请码：Q3P6O6

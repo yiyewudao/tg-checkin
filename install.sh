@@ -45,7 +45,7 @@ PIP_ROOT_USER_ACTION=ignore pip3 install --quiet telethon pysocks python-socks 2
 echo "== 3/4 下载脚本到 $DIR =="
 mkdir -p "$DIR"
 cd "$DIR"
-for f in checkin.py add_account.py setup.py run.sh env.sh.example; do
+for f in checkin.py add_account.py setup.py run.sh restore.sh env.sh.example; do
   echo "  下载 $f"
   dl "$RAW/$f" "$f"
 done
