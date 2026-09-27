@@ -34,6 +34,9 @@ def write_env(vals):
     with open(ENV_FILE, "w") as f:
         for k in order:
             f.write(f'export {k}="{vals.get(k, "")}"\n')
+        for k in sorted(vals):
+            if k.startswith("TG_TARGETS_") and k not in order:
+                f.write(f'export {k}="{vals[k]}"\n')
     os.chmod(ENV_FILE, 0o600)
 
 
@@ -47,10 +50,13 @@ def mask(v, key):
 
 def show_current(vals):
     phones = [p for p in vals.get("TG_PHONE", "").split(",") if p.strip()]
+    per = {k: v for k, v in vals.items() if k.startswith("TG_TARGETS_") and v}
     print("=" * 46)
     print("当前配置:")
     print(f"  TG 账号 ({len(phones)}): {', '.join(phones) if phones else '无'}")
-    print(f"  打卡目标: {vals.get('TG_TARGETS') or 'sheeridverifier_bot:/checkin (默认)'}")
+    print(f"  打卡目标(统一): {vals.get('TG_TARGETS') or 'sheeridverifier_bot:/checkin (默认)'}")
+    for k in sorted(per):
+        print(f"    └ {k[len('TG_TARGETS_'):]} 单独: {per[k]}")
     print(f"  推送机器人: {'已配置' if vals.get('TG_NOTIFY_BOT_TOKEN') else '未配置'}")
     print(f"  代理: {vals.get('TG_PROXY') or '未配置'}")
     print(f"  打卡时间: {current_cron()}")
@@ -135,6 +141,20 @@ def manual_checkin(vals):
     print("打卡结束" if r.returncode == 0 else "打卡异常, 看上方日志")
 
 
+def prompt_targets():
+    """逐行读取打卡目标, 返回列表; 首行即空行返回空列表。"""
+    print("逐行输入打卡目标, 格式: bot用户名:命令")
+    print("例: sheeridverifier_bot:/checkin")
+    print("命令留空则用按钮模式 (自动点签到按钮)。空行结束:")
+    targets = []
+    while True:
+        line = input("> ").strip().lstrip("@")
+        if not line:
+            break
+        targets.append(line)
+    return targets
+
+
 def main():
     vals = read_env()
     while True:
@@ -159,19 +179,40 @@ def main():
             else:
                 print("时间格式不对")
         elif choice == "3":
-            print("逐行输入打卡目标, 格式: bot用户名:命令")
-            print("例: sheeridverifier_bot:/checkin")
-            print("命令留空则用按钮模式 (自动点签到按钮)。空行结束:")
-            targets = []
-            while True:
-                line = input("> ").strip().lstrip("@")
-                if not line:
-                    break
-                targets.append(line)
-            if targets:
-                vals["TG_TARGETS"] = ",".join(targets)
-                write_env(vals)
-                print(f"已设置 {len(targets)} 个目标")
+            print("1. 所有账号用同一套打卡目标")
+            print("2. 每个账号分别设置打卡目标")
+            sub = input("选: ").strip()
+            if sub == "1":
+                targets = prompt_targets()
+                if targets:
+                    vals["TG_TARGETS"] = ",".join(targets)
+                    for k in [k for k in vals if k.startswith("TG_TARGETS_")]:
+                        del vals[k]
+                    write_env(vals)
+                    print("已设为统一目标, 各账号的单独设置已清除")
+                else:
+                    print("未输入, 未修改")
+            elif sub == "2":
+                phones = [p for p in vals.get("TG_PHONE", "").split(",") if p.strip()]
+                if not phones:
+                    print("还没有账号, 先用菜单 1 加号")
+                else:
+                    for p in phones:
+                        digits = "".join(c for c in p if c.isdigit())
+                        key = f"TG_TARGETS_{digits}"
+                        cur = vals.get(key, "")
+                        print(f"--- 账号 {p} (当前: {cur or '跟随统一设置'}) ---")
+                        print("直接回车=跟随统一设置, 输入目标=单独设置")
+                        targets = prompt_targets()
+                        if targets:
+                            vals[key] = ",".join(targets)
+                            print(f"{p} 已单独设置")
+                        elif key in vals:
+                            del vals[key]
+                            print(f"{p} 已改回跟随统一设置")
+                    write_env(vals)
+            else:
+                print("无效选项")
         elif choice == "4":
             token = input("机器人 token (BotFather 给的): ").strip()
             chat_id = input("chat ID: ").strip()

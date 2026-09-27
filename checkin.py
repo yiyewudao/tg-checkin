@@ -16,6 +16,8 @@ Telegram 每日自动打卡脚本 (软路由/OpenWrt 版, Telethon userbot, 多�
                 sheeridverifier_bot:/checkin,mygroup:/sign
                 命令留空则走按钮点击模式 (自动点含"签到/打卡"关键词的按钮)
                 不配置则默认 sheeridverifier_bot:/checkin
+    按账号分别设置: TG_TARGETS_<手机号数字> (如 TG_TARGETS_13237141808),
+                格式同上; 设置了的账号用自己的, 没设置的用 TG_TARGETS
 打卡报告推送 (可选, 配置后每次 checkin 结束推送成功/失败清单):
     TG_NOTIFY_BOT_TOKEN  推送用机器人 token (BotFather 处获取)
     TG_NOTIFY_CHAT_ID    接收报告的 chat id (先给机器人发任意消息, 再通过 getUpdates 查)
@@ -51,13 +53,10 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 log = logging.getLogger("checkin")
 
 
-def load_targets():
-    """从 TG_TARGETS 解析打卡目标, 未配置则用默认。"""
-    raw = os.environ.get("TG_TARGETS", "").strip()
-    if not raw:
-        return dict(DEFAULT_TARGETS)
+def parse_targets(raw):
+    """解析 'bot1:/checkin,bot2:' -> {bot1: '/checkin', bot2: None}。"""
     targets = {}
-    for item in raw.split(","):
+    for item in (raw or "").split(","):
         item = item.strip()
         if not item:
             continue
@@ -66,7 +65,19 @@ def load_targets():
         cmd = cmd.strip()
         if name:
             targets[name] = cmd or None
-    return targets or dict(DEFAULT_TARGETS)
+    return targets
+
+
+def load_targets():
+    """全局默认打卡目标 (TG_TARGETS), 未配置则用内置默认。"""
+    return parse_targets(os.environ.get("TG_TARGETS", "")) or dict(DEFAULT_TARGETS)
+
+
+def load_targets_for(phone):
+    """某账号的打卡目标: TG_TARGETS_<手机号数字> 优先, 否则用全局默认。"""
+    digits = "".join(c for c in phone if c.isdigit())
+    per = parse_targets(os.environ.get(f"TG_TARGETS_{digits}", ""))
+    return per or TARGETS
 
 
 TARGETS = load_targets()
@@ -176,9 +187,9 @@ async def click_button_checkin(client, bot_username):
     return f"已点击: {clicked}" if clicked else "未找到打卡按钮"
 
 
-async def do_checkin(client, tag):
+async def do_checkin(client, tag, targets):
     results = {}
-    for bot_username, command in TARGETS.items():
+    for bot_username, command in targets.items():
         try:
             if command:
                 bot = await client.get_entity(bot_username)
@@ -229,15 +240,18 @@ def send_notify(outcomes):
 
 async def run_account(api_id, api_hash, phone, session_file, proxy, mode):
     tag = phone
+    targets = load_targets_for(phone)
+    log.info("[%s] 打卡目标: %s", tag,
+             ", ".join(f"{k}->{v or '按钮模式'}" for k, v in targets.items()))
     client = TelegramClient(session_file, api_id, api_hash, proxy=proxy)
     try:
         await ensure_login(client, phone, interactive=(mode == "probe"), tag=tag)
         if mode == "probe":
-            for bot in TARGETS:
+            for bot in targets:
                 print(f"\n### [{tag}] 探测 @{bot} ###")
                 await probe_bot(client, bot)
             return True, "probe 完成"
-        results = await do_checkin(client, tag)
+        results = await do_checkin(client, tag, targets)
         bad = [f"{k}: {v}" for k, v in results.items() if v.startswith("失败")]
         if bad:
             return False, "; ".join(bad)
@@ -259,8 +273,7 @@ async def main():
     proxy = parse_proxy(PROXY_URL)
     if proxy:
         log.info("使用代理: %s", PROXY_URL)
-    log.info("共 %d 个账号, 打卡目标: %s", len(accounts),
-             ", ".join(f"{k}->{v or '按钮模式'}" for k, v in TARGETS.items()))
+    log.info("共 %d 个账号", len(accounts))
     outcomes = []
     for i, (api_id, api_hash, phone, session_file) in enumerate(accounts):
         ok, detail = await run_account(api_id, api_hash, phone, session_file, proxy, mode)
