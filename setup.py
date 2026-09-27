@@ -50,13 +50,13 @@ def mask(v, key):
 
 def show_current(vals):
     phones = [p for p in vals.get("TG_PHONE", "").split(",") if p.strip()]
-    per = {k: v for k, v in vals.items() if k.startswith("TG_TARGETS_") and v}
+    per = per_account_targets(vals)
     print("=" * 46)
     print("当前配置:")
     print(f"  TG 账号 ({len(phones)}): {', '.join(phones) if phones else '无'}")
     print(f"  打卡目标(统一): {vals.get('TG_TARGETS') or 'sheeridverifier_bot:/checkin (默认)'}")
-    for k in sorted(per):
-        print(f"    └ {k[len('TG_TARGETS_'):]} 单独: {per[k]}")
+    for digits, (kind, v) in sorted(per.items()):
+        print(f"    └ {digits} {kind}模式: {v}")
     print(f"  推送机器人: {'已配置' if vals.get('TG_NOTIFY_BOT_TOKEN') else '未配置'}")
     print(f"  代理: {vals.get('TG_PROXY') or '未配置'}")
     print(f"  打卡时间: {current_cron()}")
@@ -155,6 +155,74 @@ def prompt_targets():
     return targets
 
 
+def prompt_extras():
+    """输入某账号的额外目标。返回 (changed, new_value)。"""
+    print("逐行输入额外打卡目标, 空行结束。")
+    print("首行直接回车=保持不变, 首行只输入 - =清除额外目标:")
+    lines = []
+    while True:
+        line = input("> ").strip().lstrip("@")
+        if not line:
+            break
+        lines.append(line)
+    if not lines:
+        return False, ""
+    if lines == ["-"]:
+        return True, ""
+    return True, ",".join(lines)
+
+
+def target_names(raw):
+    """从 'bot:/cmd,group:' 提取 [bot, group]。"""
+    names = []
+    for item in (raw or "").split(","):
+        name = item.strip().lstrip("@").partition(":")[0].strip()
+        if name:
+            names.append(name)
+    return names
+
+
+def per_account_targets(vals):
+    """返回 {手机号数字: (模式, 值)}, 模式为 '独立' 或 '额外'。"""
+    out = {}
+    for k, v in vals.items():
+        if not v:
+            continue
+        if k.startswith("TG_TARGETS_ADD_"):
+            out[k[len("TG_TARGETS_ADD_"):]] = ("额外", v)
+        elif k.startswith("TG_TARGETS_"):
+            out[k[len("TG_TARGETS_"):]] = ("独立", v)
+    return out
+
+
+def audit_targets(vals, phones):
+    """统一目标变更后检查并汇报:
+    1) 额外目标里已包含在统一目标中的 -> 自动去除并汇报;
+    2) 账号已不在列表中的残留配置 -> 汇报并询问是否清除。"""
+    unified = set(target_names(vals.get("TG_TARGETS", "")))
+    phone_digits = {"".join(c for c in p if c.isdigit()) for p in phones}
+    for k in sorted([k for k in vals if k.startswith("TG_TARGETS_") and vals[k]]):
+        is_add = k.startswith("TG_TARGETS_ADD_")
+        digits = k[len("TG_TARGETS_ADD_" if is_add else "TG_TARGETS_"):]
+        if digits not in phone_digits:
+            print(f"⚠ {digits} 的{'额外' if is_add else '独立'}目标残留 (该账号已不在列表中): {vals[k]}")
+            ans = input("是否清除? (y/N): ").strip().lower()
+            if ans in ("y", "yes"):
+                del vals[k]
+                print("已清除")
+            continue
+        if is_add:
+            redundant = [n for n in target_names(vals[k]) if n in unified]
+            if redundant:
+                print(f"⚠ 账号 {digits} 的额外目标 {','.join(redundant)} 已在统一目标中, 自动去除")
+                keep = [item for item in vals[k].split(",")
+                        if item.strip().lstrip("@").partition(":")[0].strip() not in redundant]
+                if keep:
+                    vals[k] = ",".join(keep)
+                else:
+                    del vals[k]
+
+
 def main():
     vals = read_env()
     while True:
@@ -180,37 +248,82 @@ def main():
                 print("时间格式不对")
         elif choice == "3":
             print("1. 所有账号用同一套打卡目标")
-            print("2. 每个账号分别设置打卡目标")
+            print("2. 每个账号分别设置打卡目标 (独立)")
+            print("3. 统一目标 + 个别账号额外加目标")
             sub = input("选: ").strip()
+            phones = [p for p in vals.get("TG_PHONE", "").split(",") if p.strip()]
             if sub == "1":
+                targets = prompt_targets()
+                if not targets:
+                    print("未输入, 未修改")
+                    continue
+                vals["TG_TARGETS"] = ",".join(targets)
+                per = per_account_targets(vals)
+                if per:
+                    print("⚠ 统一后以下账号的单独设置将不存在:")
+                    for digits, (kind, v) in sorted(per.items()):
+                        print(f"  {digits} ({kind}模式): {v}")
+                    ans = input("确认清除这些单独设置? (y/N): ").strip().lower()
+                    if ans in ("y", "yes"):
+                        for k in [k for k in vals if k.startswith("TG_TARGETS_")]:
+                            del vals[k]
+                        print("单独设置已清除")
+                    else:
+                        print("已保留单独设置 (这些账号仍用自己的目标, 不跟随统一)")
+                else:
+                    print("已设为统一目标")
+                audit_targets(vals, phones)
+                write_env(vals)
+            elif sub == "2":
+                if not phones:
+                    print("还没有账号, 先用菜单 1 加号")
+                    continue
+                for p in phones:
+                    digits = "".join(c for c in p if c.isdigit())
+                    key = f"TG_TARGETS_{digits}"
+                    add_key = f"TG_TARGETS_ADD_{digits}"
+                    cur = vals.get(key, "")
+                    print(f"--- 账号 {p} (当前: {cur or '跟随统一设置'}) ---")
+                    print("直接回车=跟随统一设置, 输入目标=单独设置")
+                    targets = prompt_targets()
+                    if targets:
+                        vals[key] = ",".join(targets)
+                        if add_key in vals:
+                            del vals[add_key]
+                            print(f"{p} 的额外目标已清除 (独立模式优先)")
+                        print(f"{p} 已单独设置")
+                    elif key in vals:
+                        del vals[key]
+                        print(f"{p} 已改回跟随统一设置")
+                write_env(vals)
+            elif sub == "3":
+                if not phones:
+                    print("还没有账号, 先用菜单 1 加号")
+                    continue
+                print("先设置统一目标 (首行回车=保持当前)")
                 targets = prompt_targets()
                 if targets:
                     vals["TG_TARGETS"] = ",".join(targets)
-                    for k in [k for k in vals if k.startswith("TG_TARGETS_")]:
-                        del vals[k]
-                    write_env(vals)
-                    print("已设为统一目标, 各账号的单独设置已清除")
-                else:
-                    print("未输入, 未修改")
-            elif sub == "2":
-                phones = [p for p in vals.get("TG_PHONE", "").split(",") if p.strip()]
-                if not phones:
-                    print("还没有账号, 先用菜单 1 加号")
-                else:
-                    for p in phones:
-                        digits = "".join(c for c in p if c.isdigit())
-                        key = f"TG_TARGETS_{digits}"
-                        cur = vals.get(key, "")
-                        print(f"--- 账号 {p} (当前: {cur or '跟随统一设置'}) ---")
-                        print("直接回车=跟随统一设置, 输入目标=单独设置")
-                        targets = prompt_targets()
-                        if targets:
-                            vals[key] = ",".join(targets)
-                            print(f"{p} 已单独设置")
-                        elif key in vals:
-                            del vals[key]
-                            print(f"{p} 已改回跟随统一设置")
-                    write_env(vals)
+                    print("统一目标已更新")
+                for p in phones:
+                    digits = "".join(c for c in p if c.isdigit())
+                    key = f"TG_TARGETS_ADD_{digits}"
+                    rep_key = f"TG_TARGETS_{digits}"
+                    if rep_key in vals:
+                        print(f"--- 账号 {p} 当前为独立模式, 转为额外模式 (独立设置将清除) ---")
+                        del vals[rep_key]
+                    cur = vals.get(key, "")
+                    print(f"--- 账号 {p} (当前额外: {cur or '无'}) ---")
+                    changed, new_val = prompt_extras()
+                    if changed:
+                        if new_val:
+                            vals[key] = new_val
+                            print(f"{p} 额外目标已设置")
+                        else:
+                            vals.pop(key, None)
+                            print(f"{p} 额外目标已清除")
+                audit_targets(vals, phones)
+                write_env(vals)
             else:
                 print("无效选项")
         elif choice == "4":

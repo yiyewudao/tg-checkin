@@ -17,7 +17,9 @@ Telegram 每日自动打卡脚本 (软路由/OpenWrt 版, Telethon userbot, 多�
                 命令留空则走按钮点击模式 (自动点含"签到/打卡"关键词的按钮)
                 不配置则默认 sheeridverifier_bot:/checkin
     按账号分别设置: TG_TARGETS_<手机号数字> (如 TG_TARGETS_13237141808),
-                格式同上; 设置了的账号用自己的, 没设置的用 TG_TARGETS
+                格式同上; 设置了的账号完全用自己的 (独立模式), 没设置的用统一目标
+    按账号追加目标: TG_TARGETS_ADD_<手机号数字>, 格式同上;
+                该账号打卡目标 = 统一目标 + 这些额外目标 (叠加模式)
 打卡报告推送 (可选, 配置后每次 checkin 结束推送成功/失败清单):
     TG_NOTIFY_BOT_TOKEN  推送用机器人 token (BotFather 处获取)
     TG_NOTIFY_CHAT_ID    接收报告的 chat id (先给机器人发任意消息, 再通过 getUpdates 查)
@@ -74,10 +76,16 @@ def load_targets():
 
 
 def load_targets_for(phone):
-    """某账号的打卡目标: TG_TARGETS_<手机号数字> 优先, 否则用全局默认。"""
+    """某账号的打卡目标:
+    TG_TARGETS_<手机号数字> 存在则完全用它 (独立模式);
+    否则用统一 TG_TARGETS, 再叠加 TG_TARGETS_ADD_<手机号数字> 的额外目标。"""
     digits = "".join(c for c in phone if c.isdigit())
-    per = parse_targets(os.environ.get(f"TG_TARGETS_{digits}", ""))
-    return per or TARGETS
+    repl = parse_targets(os.environ.get(f"TG_TARGETS_{digits}", ""))
+    if repl:
+        return repl
+    merged = dict(TARGETS)
+    merged.update(parse_targets(os.environ.get(f"TG_TARGETS_ADD_{digits}", "")))
+    return merged
 
 
 TARGETS = load_targets()
