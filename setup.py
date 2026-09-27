@@ -135,6 +135,7 @@ def main():
         print("4. 设置推送机器人")
         print("5. 设置代理")
         print("6. 立即测试打卡一次")
+        print("7. 查看近7天打卡情况")
         print("0. 退出")
         choice = input("选: ").strip()
         if choice == "1":
@@ -186,6 +187,8 @@ def main():
             r = subprocess.run([sys.executable, os.path.join(BASE_DIR, "checkin.py"),
                                 "checkin"], env=env)
             print("测试结束" if r.returncode == 0 else "测试异常, 看上方日志")
+        elif choice == "7":
+            subprocess.run([sys.executable, os.path.join(BASE_DIR, "checkin.py"), "status"])
         elif choice == "0":
             print("退出")
             break

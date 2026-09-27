@@ -5,6 +5,7 @@ Telegram 每日自动打卡脚本 (软路由/OpenWrt 版, Telethon userbot, 多�
 用法:
     python3 checkin.py probe    # 首次运行: 交互登录 + 查看 bot 的消息/按钮(不点击)
     python3 checkin.py checkin  # 每日打卡: 每个账号依次给目标 bot 发打卡指令, 结束后推送报告
+    python3 checkin.py status   # 查看近7天打卡情况
 环境变量 (多个账号用英文逗号分隔, 三个变量的账号数量必须一致):
     TG_API_ID   如: 123456,234567
     TG_API_HASH 如: aabbcc,ddeeff
@@ -21,9 +22,11 @@ Telegram 每日自动打卡脚本 (软路由/OpenWrt 版, Telethon userbot, 多�
 """
 import asyncio
 import datetime
+import json
 import logging
 import random
 import os
+import re
 import subprocess
 import sys
 
@@ -31,6 +34,7 @@ from telethon import TelegramClient
 from telethon.errors import SessionPasswordNeededError
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+HISTORY_FILE = os.path.join(BASE_DIR, "checkin_history.jsonl")
 
 # 默认打卡目标 (TG_TARGETS 未配置时使用): bot/群用户名 -> 打卡指令(直接发送)
 # 值为 None 则走按钮点击流程 (关键词见 BUTTON_KEYWORDS)
@@ -248,6 +252,9 @@ async def run_account(api_id, api_hash, phone, session_file, proxy, mode):
 
 async def main():
     mode = sys.argv[1] if len(sys.argv) > 1 else "checkin"
+    if mode == "status":
+        show_status()
+        return
     accounts = load_accounts()
     proxy = parse_proxy(PROXY_URL)
     if proxy:
@@ -267,6 +274,81 @@ async def main():
                 await asyncio.sleep(2)
     if mode == "checkin":
         send_notify(outcomes)
+        save_history(outcomes)
+
+
+def save_history(outcomes):
+    """每次打卡后记一条结构化记录, 供 status 命令查看近7天情况。"""
+    rec = {
+        "date": datetime.date.today().isoformat(),
+        "time": datetime.datetime.now().strftime("%H:%M"),
+        "accounts": [
+            {"phone": p, "ok": ok, "detail": d[:200]} for p, ok, d in outcomes
+        ],
+    }
+    try:
+        with open(HISTORY_FILE, "a") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception as e:  # noqa: BLE001
+        log.warning("写入打卡历史失败: %s", e)
+
+
+def show_status():
+    """查看近7天打卡情况: 优先读结构化历史, 缺失的日期回退解析 checkin.log。"""
+    today = datetime.date.today()
+    days = [(today - datetime.timedelta(days=i)).isoformat() for i in range(7)]
+    days_set = set(days)
+    records = {}  # date -> {phone: (ok, detail)}
+    jsonl_dates = set()
+
+    if os.path.exists(HISTORY_FILE):
+        with open(HISTORY_FILE, encoding="utf-8") as f:
+            for line in f:
+                try:
+                    rec = json.loads(line)
+                except Exception:  # noqa: BLE001
+                    continue
+                d = rec.get("date", "")
+                if d not in days_set:
+                    continue
+                jsonl_dates.add(d)
+                for a in rec.get("accounts", []):
+                    records.setdefault(d, {})[a.get("phone", "?")] = (
+                        bool(a.get("ok")), a.get("detail", "")[:100])
+
+    logf = os.path.join(BASE_DIR, "checkin.log")
+    pat = re.compile(r"^(\d{4}-\d{2}-\d{2}) \d{2}:\d{2}:\d{2}.*\[(\+[\d]+)\] (\S+) -> (.*)$")
+    if os.path.exists(logf):
+        with open(logf, encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                m = pat.match(line.strip())
+                if not m:
+                    continue
+                d, phone, target, detail = m.groups()
+                if d not in days_set or d in jsonl_dates:
+                    continue
+                ok = not detail.startswith("失败")
+                short = f"{target}: {detail[:80]}"
+                prev = records.setdefault(d, {}).get(phone)
+                if prev is None:
+                    records[d][phone] = (ok, short)
+                else:
+                    records[d][phone] = (prev[0] and ok, prev[1] + "; " + short)
+
+    print("=" * 52)
+    print("近7天打卡情况")
+    print("=" * 52)
+    for i, d in enumerate(days):
+        label = "今天" if i == 0 else ("昨天" if i == 1 else f"{i}天前")
+        print(f"{d} ({label})")
+        day_rec = records.get(d)
+        if not day_rec:
+            print("  ⚪ 当天未运行打卡")
+        else:
+            for phone, (ok, detail) in day_rec.items():
+                mark = "✅" if ok else "❌"
+                print(f"  {mark} {phone}  {detail}")
+    print("=" * 52)
 
 
 if __name__ == "__main__":
