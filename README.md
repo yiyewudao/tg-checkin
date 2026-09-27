@@ -7,21 +7,22 @@
 在软路由 SSH 里执行:
 
 ```sh
-# 公开仓库
+# 常规安装 (能直连 GitHub):
 wget -qO- https://raw.githubusercontent.com/yiyewudao/tg-checkin/main/install.sh | sh
 
-# 私有仓库 (token 只在下载时用, 不保存)
-curl -sfL -H "Authorization: Bearer 你的TOKEN" \
-  -o /tmp/install.sh https://raw.githubusercontent.com/yiyewudao/tg-checkin/main/install.sh \
-  && sh /tmp/install.sh
+# 国内用户 (GitHub 被墙) 经中转服务器安装:
+export TG_RAW_BASE="http://free.xlulu.eu.org:8000" && wget -qO- $TG_RAW_BASE/install.sh | sh
 ```
 
-安装脚本会: 装 python3/pip/telethon → 下载脚本到 `/root/tg-checkin/` → 写入每天 10:00 的定时任务。私有仓库下载时按提示输入 GitHub token (repo 权限) 即可, 也可以提前 `export GITHUB_TOKEN=xxx` 跳过输入。
+安装脚本会: 装 python3/pip/telethon → 下载脚本到 `/root/tg-checkin/` → 写入每天 10:00 的定时任务。
 
 ## 服务器版 (Debian / Ubuntu)
 
 ```sh
 wget -qO- https://raw.githubusercontent.com/yiyewudao/tg-checkin/main/install-server.sh | sh
+
+# 国内用户 (GitHub 被墙) 经中转服务器安装:
+export TG_RAW_BASE="http://free.xlulu.eu.org:8000" && wget -qO- $TG_RAW_BASE/install-server.sh | sh
 ```
 
 `setup.py` 会自动识别软路由和服务器, 定时任务分别写入对应的 cron。
