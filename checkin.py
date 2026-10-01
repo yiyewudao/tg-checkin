@@ -51,8 +51,50 @@ BUTTON_KEYWORDS = ["签到", "打卡", "check in", "check-in", "checkin", "✅",
 
 PROXY_URL = os.environ.get("TG_PROXY", "").strip()
 
+# 账号展示名缓存: 手机号 -> TG 名字 (推送报告里只显示名字, 不出现手机号)
+DISPLAY_FILE = os.path.join(BASE_DIR, "display_names.json")
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("checkin")
+
+
+def tg_display_name(me):
+    """Telethon User -> 展示名, 如 '海客枫 (@haeem)'。"""
+    name = (me.first_name or "").strip()
+    if me.username:
+        name = f"{name} (@{me.username})".strip()
+    return name
+
+
+def load_display_names():
+    try:
+        with open(DISPLAY_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def save_display_name(phone, display):
+    try:
+        names = load_display_names()
+        names[phone] = display
+        tmp = DISPLAY_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(names, f, ensure_ascii=False)
+        os.replace(tmp, DISPLAY_FILE)
+    except OSError:
+        pass
+
+
+def fallback_display(phone):
+    """拿不到 TG 名字时的兜底: 用缓存, 再没有就只露尾号, 绝不出现完整手机号。"""
+    names = load_display_names()
+    if phone in names:
+        return names[phone]
+    digits = "".join(c for c in phone if c.isdigit())
+    if digits:
+        return f"尾号{digits[-4:]}的账号"
+    return "未知账号"
 
 
 def parse_targets(raw):
@@ -139,7 +181,7 @@ async def ensure_login(client, phone, interactive, tag):
     if await client.is_user_authorized():
         me = await client.get_me()
         log.info("[%s] 已登录: %s (@%s)", tag, me.first_name, me.username)
-        return
+        return me
     if not interactive:
         log.error("[%s] 登录态失效且非交互模式, 跳过。请手动跑一次 probe 模式重新登录。", tag)
         raise RuntimeError("login expired")
@@ -153,6 +195,7 @@ async def ensure_login(client, phone, interactive, tag):
         await client.sign_in(password=pw)
     me = await client.get_me()
     log.info("[%s] 登录成功: %s (@%s)", tag, me.first_name, me.username)
+    return me
 
 
 async def probe_bot(client, bot_username):
@@ -217,7 +260,8 @@ async def do_checkin(client, tag, targets):
 
 
 def send_notify(outcomes):
-    """打卡结束后推送报告到指定机器人。outcomes: [(phone, ok, detail), ...]。"""
+    """打卡结束后推送报告到指定机器人。outcomes: [(display, ok, detail), ...],
+    display 为账号 TG 展示名 (不含手机号)。"""
     token = os.environ.get("TG_NOTIFY_BOT_TOKEN", "").strip()
     chat_id = os.environ.get("TG_NOTIFY_CHAT_ID", "").strip()
     if not token or not chat_id:
@@ -252,22 +296,25 @@ async def run_account(api_id, api_hash, phone, session_file, proxy, mode):
     log.info("[%s] 打卡目标: %s", tag,
              ", ".join(f"{k}->{v or '按钮模式'}" for k, v in targets.items()))
     client = TelegramClient(session_file, api_id, api_hash, proxy=proxy)
+    display = fallback_display(phone)
     try:
-        await ensure_login(client, phone, interactive=(mode == "probe"), tag=tag)
+        me = await ensure_login(client, phone, interactive=(mode == "probe"), tag=tag)
+        display = tg_display_name(me) or phone
+        save_display_name(phone, display)
         if mode == "probe":
             for bot in targets:
                 print(f"\n### [{tag}] 探测 @{bot} ###")
                 await probe_bot(client, bot)
-            return True, "probe 完成"
+            return True, "probe 完成", display
         results = await do_checkin(client, tag, targets)
         bad = [f"{k}: {v}" for k, v in results.items() if v.startswith("失败")]
         if bad:
-            return False, "; ".join(bad)
-        return True, "; ".join(f"{k}: {v}" for k, v in results.items())
+            return False, "; ".join(bad), display
+        return True, "; ".join(f"{k}: {v}" for k, v in results.items()), display
     except RuntimeError as e:
-        return False, f"登录失效: {e}"
+        return False, f"登录失效: {e}", display
     except Exception as e:  # noqa: BLE001
-        return False, f"{type(e).__name__}: {e}"
+        return False, f"{type(e).__name__}: {e}", display
     finally:
         await client.disconnect()
 
@@ -284,8 +331,8 @@ async def main():
     log.info("共 %d 个账号", len(accounts))
     outcomes = []
     for i, (api_id, api_hash, phone, session_file) in enumerate(accounts):
-        ok, detail = await run_account(api_id, api_hash, phone, session_file, proxy, mode)
-        outcomes.append((phone, ok, detail))
+        ok, detail, display = await run_account(api_id, api_hash, phone, session_file, proxy, mode)
+        outcomes.append((display, ok, detail))
         if i < len(accounts) - 1:
             if mode == "checkin":
                 delay = 5 + random.random() * 8
@@ -304,7 +351,7 @@ def save_history(outcomes):
         "date": datetime.date.today().isoformat(),
         "time": datetime.datetime.now().strftime("%H:%M"),
         "accounts": [
-            {"phone": p, "ok": ok, "detail": d[:200]} for p, ok, d in outcomes
+            {"account": d, "ok": ok, "detail": det[:200]} for d, ok, det in outcomes
         ],
     }
     try:
@@ -334,7 +381,7 @@ def show_status():
                     continue
                 jsonl_dates.add(d)
                 for a in rec.get("accounts", []):
-                    records.setdefault(d, {})[a.get("phone", "?")] = (
+                    records.setdefault(d, {})[a.get("account", a.get("phone", "?"))] = (
                         bool(a.get("ok")), a.get("detail", "")[:100])
 
     logf = os.path.join(BASE_DIR, "checkin.log")
